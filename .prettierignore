@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Native build folders
+ios/
+android/
+
+# Metro
+.metro-health-check*
+
+# Environment
+.env*.local
+
+# Generated
+expo-env.d.ts
+*.tsbuildinfo
+
+# OS
+.DS_Store
+
+# Native artifacts
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# AI
+.agents
+.claude
+.opencode
+docs

@@ -1,98 +1,299 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { ItemCard } from '@/components/item-card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { FAB } from '@/components/ui/fab';
+import { SwipeableItem } from '@/components/ui/swipeable-item';
+import { PLATFORM_CONFIG, type Platform as PlatformType } from '@/constants/platforms';
+import { colors, radius, spacing } from '@/constants/theme';
+import { useItemsStore } from '@/stores/items-store';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Alert,
+  FlatList,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+type DateRange = 'all' | 'today' | 'week' | 'month';
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { items, loading, fetchItems, deleteItem, toggleWatched } = useItemsStore();
+  const [platformFilter, setPlatformFilter] = useState<PlatformType | 'all'>('all');
+  const [dateFilter, setDateFilter] = useState<DateRange>('all');
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  useEffect(() => {
+    fetchItems();
+  }, [fetchItems]);
+
+  const onRefresh = useCallback(() => {
+    fetchItems();
+  }, [fetchItems]);
+
+  const handleDelete = (id: string, title: string) => {
+    Alert.alert('Delete Item', `Delete "${title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteItem(id) },
+    ]);
+  };
+
+  const filteredItems = useMemo(() => {
+    const now = new Date();
+    return items.filter((item) => {
+      if (platformFilter !== 'all' && item.platform !== platformFilter) return false;
+      if (dateFilter !== 'all') {
+        const itemDate = new Date(item.created_at);
+        const diffMs = now.getTime() - itemDate.getTime();
+        const diffDays = diffMs / (1000 * 60 * 60 * 24);
+        if (dateFilter === 'today' && diffDays > 1) return false;
+        if (dateFilter === 'week' && diffDays > 7) return false;
+        if (dateFilter === 'month' && diffDays > 30) return false;
+      }
+      return true;
+    });
+  }, [items, platformFilter, dateFilter]);
+
+  const platforms: (PlatformType | 'all')[] = [
+    'all',
+    ...(Object.keys(PLATFORM_CONFIG) as PlatformType[]),
+  ];
+  const hasItems = items.length > 0;
+
+  const renderItem = ({ item }: { item: (typeof items)[number] }) => (
+    <SwipeableItem
+      onWatched={() => toggleWatched(item.id)}
+      onDelete={() => handleDelete(item.id, item.title)}
+    >
+      <ItemCard
+        id={item.id}
+        title={item.title}
+        platform={item.platform}
+        watched={item.watched}
+        created_at={item.created_at}
+      />
+    </SwipeableItem>
+  );
+
+  if (loading && items.length === 0) {
+    return (
+      <View style={styles.center}>
+        <Text style={{ color: colors.textSecondary, fontSize: 16 }}>Loading...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={[
+        styles.container,
+        { paddingTop: Platform.OS !== 'web' ? insets.top : 0, paddingBottom: insets.bottom },
+      ]}
+    >
+      <View style={styles.header}>
+        <Text style={styles.title}>Play Later</Text>
+        {hasItems && (
+          <Text style={styles.subtitle}>
+            {filteredItems.length} of {items.length} item{items.length !== 1 ? 's' : ''}
+          </Text>
+        )}
+      </View>
+
+      <View style={styles.filterContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterBar}
+        >
+          {platforms.map((p) => {
+            const isActive = platformFilter === p;
+            const config = p === 'all' ? null : PLATFORM_CONFIG[p];
+            return (
+              <TouchableOpacity
+                key={p}
+                onPress={() => hasItems && setPlatformFilter(p)}
+                disabled={!hasItems}
+                style={[
+                  styles.chip,
+                  isActive &&
+                    hasItems && {
+                      backgroundColor: config ? `${config.color}15` : colors.accentLight,
+                      borderColor: config ? config.color : colors.accent,
+                    },
+                  !hasItems && styles.chipDisabled,
+                ]}
+              >
+                {config && (
+                  <View
+                    style={[
+                      styles.chipDot,
+                      { backgroundColor: hasItems ? config.color : colors.textTertiary },
+                    ]}
+                  />
+                )}
+                <Text
+                  style={[
+                    styles.chipText,
+                    isActive &&
+                      hasItems && {
+                        color: config ? config.color : colors.accent,
+                        fontWeight: '600',
+                      },
+                    !hasItems && styles.chipTextDisabled,
+                  ]}
+                >
+                  {p === 'all' ? 'All' : config?.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      <View style={styles.dateFilterContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.dateFilterBar}
+        >
+          {(['all', 'today', 'week', 'month'] as DateRange[]).map((d) => {
+            const isActive = dateFilter === d;
+            const labels: Record<DateRange, string> = {
+              all: 'All',
+              today: 'Today',
+              week: 'This Week',
+              month: 'This Month',
+            };
+            return (
+              <TouchableOpacity
+                key={d}
+                onPress={() => hasItems && setDateFilter(d)}
+                disabled={!hasItems}
+                style={[
+                  styles.dateChip,
+                  isActive && hasItems && { backgroundColor: colors.accent },
+                  !hasItems && styles.dateChipDisabled,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.dateChipText,
+                    isActive && hasItems && { color: colors.white },
+                    !hasItems && styles.dateChipTextDisabled,
+                  ]}
+                >
+                  {labels[d]}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {!hasItems ? (
+        <EmptyState
+          title="Nothing saved yet"
+          description="Save videos, shows, and movies to watch later. Tap + to add your first item."
+          icon={<Ionicons name="bookmark-outline" size={48} color={colors.textTertiary} />}
+        />
+      ) : filteredItems.length > 0 ? (
+        <FlatList
+          data={filteredItems}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor={colors.accent} />
+          }
+          showsVerticalScrollIndicator={false}
+        />
+      ) : (
+        <View style={styles.list}>
+          <EmptyState
+            title="No items match filters"
+            description="Try adjusting your platform or date range filters."
+            icon={<Ionicons name="filter-outline" size={48} color={colors.textTertiary} />}
+          />
+        </View>
+      )}
+
+      <FAB onPress={() => router.push('/add')} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: { flex: 1, backgroundColor: colors.backgroundSecondary },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.backgroundSecondary,
+  },
+  header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  title: { fontSize: 28, fontWeight: '700', color: colors.text },
+  subtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 2 },
+  filterContainer: {
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  filterBar: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
+  chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.backgroundTertiary,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  chipDisabled: { opacity: 0.4 },
+  chipDot: { width: 6, height: 6, borderRadius: 3 },
+  chipText: { fontSize: 13, color: colors.textSecondary },
+  chipTextDisabled: { color: colors.textTertiary },
+  dateFilterContainer: {
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  dateFilterBar: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
   },
+  dateChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    backgroundColor: colors.backgroundTertiary,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dateChipDisabled: { opacity: 0.4 },
+  dateChipText: { fontSize: 12, fontWeight: '500', color: colors.textSecondary },
+  dateChipTextDisabled: { color: colors.textTertiary },
+  list: { padding: spacing.md, paddingBottom: 100, flex: 1 },
 });

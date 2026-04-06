@@ -1,0 +1,12 @@
+@import 'tailwindcss';
+@import 'uniwind';
+
+/* Fix: hide inactive tab scenes on web */
+@media screen and (min-width: 0) {
+  [style*='z-index: -1'],
+  [style*='zIndex: -1'] {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+}
